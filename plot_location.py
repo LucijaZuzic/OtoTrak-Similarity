@@ -28,7 +28,7 @@ for subdir_name in all_subdirs:
     print(subdir_name)
       
     all_files = os.listdir(subdir_name + "/cleaned_csv/") 
-    bad_rides_filenames = set()
+    bad_rides_filenames = dict()
     if os.path.isfile(subdir_name + "/bad_rides_filenames"):
         bad_rides_filenames = load_object(subdir_name + "/bad_rides_filenames")
     maxx = -100000
@@ -36,7 +36,7 @@ for subdir_name in all_subdirs:
     maxy = -100000
     miny = 100000
     for some_file in all_files:  
-        if some_file in bad_rides_filenames:
+        if subdir_name + "/cleaned_csv/" + some_file in bad_rides_filenames:
             #print("Skipped ride", some_file)
             continue
         #print("Used ride", some_file)
@@ -62,11 +62,11 @@ for subdir_name in ["Vehicle_1", "Vehicle_10"]:
     print(subdir_name)
       
     all_files = os.listdir(subdir_name + "/cleaned_csv/") 
-    bad_rides_filenames = set()
+    bad_rides_filenames = dict()
     if os.path.isfile(subdir_name + "/bad_rides_filenames"):
         bad_rides_filenames = load_object(subdir_name + "/bad_rides_filenames")
     for some_file in all_files:  
-        if some_file in bad_rides_filenames:
+        if subdir_name + "/cleaned_csv/" + some_file in bad_rides_filenames:
             #print("Skipped ride", some_file)
             continue
         #print("Used ride", some_file)
