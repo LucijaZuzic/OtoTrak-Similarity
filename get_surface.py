@@ -3,6 +3,8 @@ import os
 import pandas as pd
 import numpy as np 
 import pickle
+from scipy.integrate import simpson
+from sklearn.metrics import auc
       
 def get_vector(x1, x2, y1, y2):
     if x1 == x2:
@@ -82,6 +84,12 @@ def traj_dist(longitudes1, latitudes1, longitudes2, latitudes2):
     for i in range(len(longitudes1) - 1):
         sum_dist += traj_segment_dist(longitudes1[i], latitudes1[i], longitudes1[i + 1], latitudes1[i + 1], longitudes2[i], latitudes2[i], longitudes2[i + 1], latitudes2[i + 1])
     return sum_dist
+
+def euclidean(longitudes1, latitudes1, longitudes2, latitudes2):
+    sum_dist = 0
+    for i in range(len(longitudes1)):
+        sum_dist += np.sqrt((longitudes1[i] - longitudes2[i]) ** 2 + (latitudes1[i] - latitudes2[i]) ** 2)
+    return sum_dist / len(longitudes1)
 
 def traj_dist_markings(longitudes1, latitudes1, longitudes2, latitudes2):
     sum_dist = 0
@@ -264,7 +272,7 @@ for subdir_name in all_subdirs:
 print(total_possible_trajs)
 print(label_NF, label_NM, label_D, label_I) 
 
-def compare_all_with_sample(sample_x, sample_y, title_sample):
+def compare_all_with_sample(metric_used, sample_x, sample_y, title_sample):
  
     distances_from_sample_ride_vehicle = [] 
     labels_from_sample_ride_vehicle = [] 
@@ -278,10 +286,21 @@ def compare_all_with_sample(sample_x, sample_y, title_sample):
     for vehicle1 in all_possible_trajs[window_size].keys():  
         for r1 in all_possible_trajs[window_size][vehicle1]:  
             for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
-                t1 = all_possible_trajs[window_size][vehicle1][r1][x1]  
-
-                td_up = traj_dist(t1["long"], t1["lat"], sample_x, sample_y) 
-                distances_from_sample_ride_vehicle.append(td_up) 
+                t1 = all_possible_trajs[window_size][vehicle1][r1][x1]   
+                #td_up_auc = abs(auc(t1["long"], t1["lat"]) - auc(sample_x, sample_y)) - isti kao trapz, x mora biti rastući ili padajući
+                #print(td_up, td_up_trapz, td_up_simpson)#, td_up_auc)
+                if metric_used == "custom":
+                    td_up = traj_dist(t1["long"], t1["lat"], sample_x, sample_y) 
+                    distances_from_sample_ride_vehicle.append(td_up) 
+                if metric_used == "trapz":
+                    td_up_trapz = abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x))
+                    distances_from_sample_ride_vehicle.append(td_up_trapz) 
+                if metric_used == "simpson":
+                    td_up_simpson = abs(simpson(t1["lat"], t1["long"]) - simpson(sample_y, sample_x))
+                    distances_from_sample_ride_vehicle.append(td_up_simpson) 
+                if metric_used == "euclidean":
+                    td_up_euclidean = euclidean(t1["long"], t1["lat"], sample_x, sample_y)
+                    distances_from_sample_ride_vehicle.append(td_up_euclidean) 
                 labels_from_sample_ride_vehicle.append(trajectory_monotonous[window_size][vehicle1][r1][x1])
 
                 if distances_from_sample_ride_vehicle[-1] > max_distances_from_sample_ride_vehicle:
@@ -291,17 +310,18 @@ def compare_all_with_sample(sample_x, sample_y, title_sample):
                 if distances_from_sample_ride_vehicle[-1] < min_distances_from_sample_ride_vehicle:
                     index_min_distances_from_sample_ride_vehicle = t1
                     min_distances_from_sample_ride_vehicle = distances_from_sample_ride_vehicle[-1]
-    
+
     plt.subplot(1, 2, 1)
-    plt.title("Min " + title_sample)
+    plt.title("Min " + metric_used + " " + title_sample)
     plt.plot(index_min_distances_from_sample_ride_vehicle["long"], index_min_distances_from_sample_ride_vehicle["lat"])
     plt.plot(sample_x, sample_y)
     plt.subplot(1, 2, 2)
-    plt.title("Max " + title_sample)
+    plt.title("Max " + metric_used + " " + title_sample)
     plt.plot(index_max_distances_from_sample_ride_vehicle["long"], index_max_distances_from_sample_ride_vehicle["lat"])
     plt.plot(sample_x, sample_y)
-    plt.show()
-
+    plt.savefig("Min Max " + metric_used + " " + title_sample + ".png", bbox_inches = "tight")
+    plt.close()
+    
     only_NF = []
     only_NM = []
     only_I = []
@@ -315,109 +335,229 @@ def compare_all_with_sample(sample_x, sample_y, title_sample):
             only_I.append(distances_from_sample_ride_vehicle[i])
         if labels_from_sample_ride_vehicle[i] == "D":
             only_D.append(distances_from_sample_ride_vehicle[i])
-  
-    plt.title("Dist " + title_sample)
+    
+    plt.title("Dist " + metric_used + " " + title_sample)
     plt.hist(distances_from_sample_ride_vehicle)
     plt.hist(only_NF, label = "NF")
     plt.hist(only_NM, label = "NM")
     plt.hist(only_I, label = "I") 
     plt.legend()
-    plt.show()
-
+    plt.savefig("Dist " + metric_used + " " + title_sample + ".png", bbox_inches = "tight")
+    plt.close()
+    
     return distances_from_sample_ride_vehicle, labels_from_sample_ride_vehicle, only_NF, only_NM, only_I
 
-left_edge_x = [0 for i in range(window_size)]
-left_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
-left_dist, traj_labels, left_NF, left_NM, left_I = compare_all_with_sample(left_edge_x, left_edge_y, "left")
+def use_metric(metric_used): 
+    left_edge_x = [0 for i in range(window_size)]
+    left_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
+    left_dist, traj_labels, left_NF, left_NM, left_I = compare_all_with_sample(metric_used, left_edge_x, left_edge_y, "left")
 
-right_edge_x = [1 for i in range(window_size)]
-right_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
-right_dist, traj_labels, right_NF, right_NM, right_I = compare_all_with_sample(right_edge_x, right_edge_y, "right")
+    right_edge_x = [1 for i in range(window_size)]
+    right_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
+    right_dist, traj_labels, right_NF, right_NM, right_I = compare_all_with_sample(metric_used, right_edge_x, right_edge_y, "right")
 
-down_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-down_edge_y = [0 for i in range(window_size)]
-down_dist, traj_labels, down_NF, down_NM, down_I = compare_all_with_sample(down_edge_x, down_edge_y, "down")
+    down_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    down_edge_y = [0 for i in range(window_size)]
+    down_dist, traj_labels, down_NF, down_NM, down_I = compare_all_with_sample(metric_used, down_edge_x, down_edge_y, "down")
 
-up_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-up_edge_y = [1 for i in range(window_size)]
-up_dist, traj_labels, up_NF, up_NM, up_I = compare_all_with_sample(up_edge_x, up_edge_y, "up")
+    up_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    up_edge_y = [1 for i in range(window_size)]
+    up_dist, traj_labels, up_NF, up_NM, up_I = compare_all_with_sample(metric_used, up_edge_x, up_edge_y, "up")
 
-diagonal_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-diagonal_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
-diagonal_edge_dist, traj_labels, diagonal_NF, diagonal_NM, diagonal_I = compare_all_with_sample(diagonal_edge_x, diagonal_edge_y, "diagonal")
+    diagonal_edge_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    diagonal_edge_y = [x * 1 / (window_size - 1) for x in range(window_size)]
+    diagonal_edge_dist, traj_labels, diagonal_NF, diagonal_NM, diagonal_I = compare_all_with_sample(metric_used, diagonal_edge_x, diagonal_edge_y, "diagonal")
 
-left_circle_y = [x * 1 / (window_size - 1) for x in range(window_size)]
-left_circle_x = [np.sqrt(- y * (y - 1)) for y in left_circle_y]
-left_circle_dist, traj_labels, left_circle_NF, left_circle_NM, left_circle_I = compare_all_with_sample(left_circle_x, left_circle_y, "left circle")
+    left_circle_y = [x * 1 / (window_size - 1) for x in range(window_size)]
+    left_circle_x = [np.sqrt(- y * (y - 1)) for y in left_circle_y]
+    left_circle_dist, traj_labels, left_circle_NF, left_circle_NM, left_circle_I = compare_all_with_sample(metric_used, left_circle_x, left_circle_y, "left circle")
 
-right_circle_y = [x * 1 / (window_size - 1) for x in range(window_size)]
-right_circle_x = [1 - np.sqrt(- y * (y - 1)) for y in right_circle_y]
-right_circle_dist, traj_labels, right_circle_NF, right_circle_NM, right_circle_I = compare_all_with_sample(right_circle_x, right_circle_y, "right circle")
+    right_circle_y = [x * 1 / (window_size - 1) for x in range(window_size)]
+    right_circle_x = [1 - np.sqrt(- y * (y - 1)) for y in right_circle_y]
+    right_circle_dist, traj_labels, right_circle_NF, right_circle_NM, right_circle_I = compare_all_with_sample(metric_used, right_circle_x, right_circle_y, "right circle")
 
-down_circle_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-down_circle_y = [np.sqrt(- x * (x - 1)) for x in down_circle_x]
-down_circle_dist, traj_labels, down_circle_NF, down_circle_NM, down_circle_I = compare_all_with_sample(down_circle_x, down_circle_y, "down circle") 
+    down_circle_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    down_circle_y = [np.sqrt(- x * (x - 1)) for x in down_circle_x]
+    down_circle_dist, traj_labels, down_circle_NF, down_circle_NM, down_circle_I = compare_all_with_sample(metric_used, down_circle_x, down_circle_y, "down circle") 
 
-up_circle_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-up_circle_y = [1 - np.sqrt(- x * (x - 1)) for x in up_circle_x] 
-up_circle_dist, traj_labels, up_circle_NF, up_circle_NM, up_circle_I = compare_all_with_sample(up_circle_x, up_circle_y, "up circle") 
-  
-sin_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-sin_y = [np.sin(x * np.pi * 2) for x in sin_x] 
-sin_dist, traj_labels, sin_NF, sin_NM, sin_I = compare_all_with_sample(sin_x, sin_y, "sin")  
+    up_circle_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    up_circle_y = [1 - np.sqrt(- x * (x - 1)) for x in up_circle_x] 
+    up_circle_dist, traj_labels, up_circle_NF, up_circle_NM, up_circle_I = compare_all_with_sample(metric_used, up_circle_x, up_circle_y, "up circle") 
+    
+    sin_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    sin_y = [np.sin(x * np.pi * 2) for x in sin_x] 
+    sin_dist, traj_labels, sin_NF, sin_NM, sin_I = compare_all_with_sample(metric_used, sin_x, sin_y, "sin")  
 
-sin_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-sin_reverse_y = [np.sin(x * np.pi * 2 + np.pi) for x in sin_x] 
-sin_reverse_dist, traj_labels, sin_reverse_NF, sin_reverse_NM, sin_reverse_I = compare_all_with_sample(sin_reverse_x, sin_reverse_y, "sin reverse")   
+    sin_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    sin_reverse_y = [np.sin(x * np.pi * 2 + np.pi) for x in sin_x] 
+    sin_reverse_dist, traj_labels, sin_reverse_NF, sin_reverse_NM, sin_reverse_I = compare_all_with_sample(metric_used, sin_reverse_x, sin_reverse_y, "sin reverse")   
 
-sin_half_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-sin_half_y = [np.sin(x * np.pi) for x in sin_half_x] 
-sin_half_dist, traj_labels, sin_half_NF, sin_half_NM, sin_half_I = compare_all_with_sample(sin_half_x, sin_half_y, "sin half")   
+    sin_half_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    sin_half_y = [np.sin(x * np.pi) for x in sin_half_x] 
+    sin_half_dist, traj_labels, sin_half_NF, sin_half_NM, sin_half_I = compare_all_with_sample(metric_used, sin_half_x, sin_half_y, "sin half")   
 
-sin_half_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-sin_half_reverse_y = [np.sin(x * np.pi + np.pi) for x in sin_half_x]  
-sin_half_reverse_dist, traj_labels, sin_half_reverse_NF, sin_half_reverse_NM, sin_half_reverse_I = compare_all_with_sample(sin_half_reverse_x, sin_half_reverse_y, "sin half reverse")   
+    sin_half_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    sin_half_reverse_y = [np.sin(x * np.pi + np.pi) for x in sin_half_x]  
+    sin_half_reverse_dist, traj_labels, sin_half_reverse_NF, sin_half_reverse_NM, sin_half_reverse_I = compare_all_with_sample(metric_used, sin_half_reverse_x, sin_half_reverse_y, "sin half reverse")   
+    
+    cos_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    cos_y = [np.cos(x * np.pi * 2) for x in cos_x] 
+    cos_dist, traj_labels, cos_NF, cos_NM, cos_I = compare_all_with_sample(metric_used, cos_x, cos_y, "cos")  
+
+    cos_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    cos_reverse_y = [np.cos(x * np.pi * 2 + np.pi) for x in cos_x] 
+    cos_reverse_dist, traj_labels, cos_reverse_NF, cos_reverse_NM, cos_reverse_I = compare_all_with_sample(metric_used, cos_reverse_x, cos_reverse_y, "cos reverse")   
+
+    cos_half_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    cos_half_y = [np.cos(x * np.pi) for x in cos_half_x] 
+    cos_half_dist, traj_labels, cos_half_NF, cos_half_NM, cos_half_I = compare_all_with_sample(metric_used, cos_half_x, cos_half_y, "cos half")   
+
+    cos_half_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
+    cos_half_reverse_y = [np.cos(x * np.pi + np.pi) for x in cos_half_x]  
+    cos_half_reverse_dist, traj_labels, cos_half_reverse_NF, cos_half_reverse_NM, cos_half_reverse_I = compare_all_with_sample(metric_used, cos_half_reverse_x, cos_half_reverse_y, "cos half reverse")   
+
+    plt.title("Compare left down " + metric_used)
+    plt.scatter(left_NF, down_NF, label = "NF")
+    plt.scatter(left_NM, down_NM, label = "NM")
+    plt.scatter(left_I, down_I, label = "I")
+    plt.legend()
+    plt.savefig("Compare left down " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+    plt.title("Compare up right " + metric_used)
+    plt.scatter(up_NF, right_NF, label = "NF")
+    plt.scatter(up_NM, right_NM, label = "NM")
+    plt.scatter(up_I, right_I, label = "I")
+    plt.legend() 
+    plt.savefig("Compare up right " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+    
+    plt.title("Compare left circle down circle " + metric_used)
+    plt.scatter(left_circle_NF, down_circle_NF, label = "NF")
+    plt.scatter(left_circle_NM, down_circle_NM, label = "NM")
+    plt.scatter(left_circle_I, down_circle_I, label = "I")
+    plt.legend()
+    plt.savefig("Compare left circle down circle " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+     
+    plt.title("Compare up circle right circle " + metric_used)
+    plt.scatter(up_circle_NF, right_circle_NF, label = "NF")
+    plt.scatter(up_circle_NM, right_circle_NM, label = "NM")
+    plt.scatter(up_circle_I, right_circle_I, label = "I")
+    plt.legend() 
+    plt.savefig("Compare up circle right circle " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+#use_metric("custom")
+#use_metric("simpson")
+#use_metric("trapz")
+#use_metric("euclidean")
+
+def compare_all(metric_used):
  
-cos_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-cos_y = [np.cos(x * np.pi * 2) for x in cos_x] 
-cos_dist, traj_labels, cos_NF, cos_NM, cos_I = compare_all_with_sample(cos_x, cos_y, "cos")  
+    distances_from_sample_ride_vehicle = [] 
+    trajs_from_sample_ride_vehicle = [] 
+    labels_from_sample_ride_vehicle = [] 
 
-cos_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-cos_reverse_y = [np.cos(x * np.pi * 2 + np.pi) for x in cos_x] 
-cos_reverse_dist, traj_labels, cos_reverse_NF, cos_reverse_NM, cos_reverse_I = compare_all_with_sample(cos_reverse_x, cos_reverse_y, "cos reverse")   
+    max_distances_from_sample_ride_vehicle = 0
+    index_max_distances_from_sample_ride_vehicle_1 = 0 
+    index_max_distances_from_sample_ride_vehicle_2 = 0 
 
-cos_half_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-cos_half_y = [np.cos(x * np.pi) for x in cos_half_x] 
-cos_half_dist, traj_labels, cos_half_NF, cos_half_NM, cos_half_I = compare_all_with_sample(cos_half_x, cos_half_y, "cos half")   
+    min_distances_from_sample_ride_vehicle = 100000
+    index_min_distances_from_sample_ride_vehicle_1 = 0 
+    index_min_distances_from_sample_ride_vehicle_2 = 0 
 
-cos_half_reverse_x = [x * 1 / (window_size - 1) for x in range(window_size)]
-cos_half_reverse_y = [np.cos(x * np.pi + np.pi) for x in cos_half_x]  
-cos_half_reverse_dist, traj_labels, cos_half_reverse_NF, cos_half_reverse_NM, cos_half_reverse_I = compare_all_with_sample(cos_half_reverse_x, cos_half_reverse_y, "cos half reverse")   
+    for vehicle1 in all_possible_trajs[window_size].keys():  
+        for r1 in all_possible_trajs[window_size][vehicle1]:  
+            for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
+                t1 = all_possible_trajs[window_size][vehicle1][r1][x1]  
+                for vehicle2 in all_possible_trajs[window_size].keys():
+                    #if vehicle2 == vehicle1:
+                        #continue    
+                    for r2 in all_possible_trajs[window_size][vehicle2]:  
+                        for x2 in all_possible_trajs[window_size][vehicle2][r2]: 
+                            if vehicle2 == vehicle1 and r1 == r2 and x1 == x2:
+                                continue    
+                            t2 = all_possible_trajs[window_size][vehicle2][r2][x2]
+                            #td_up_auc = abs(auc(t1["long"], t1["lat"]) - auc(sample_x, sample_y)) - isti kao trapz, x mora biti rastući ili padajući
+                            #print(td_up, td_up_trapz, td_up_simpson)#, td_up_auc)
+                            if metric_used == "custom":
+                                td_up = traj_dist(t1["long"], t1["lat"], t2["long"], t2["lat"]) 
+                                distances_from_sample_ride_vehicle.append(td_up) 
+                            if metric_used == "trapz":
+                                td_up_trapz = abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(t2["lat"], t2["long"]))
+                                distances_from_sample_ride_vehicle.append(td_up_trapz) 
+                            if metric_used == "simpson":
+                                td_up_simpson = abs(simpson(t1["lat"], t1["long"]) - simpson(t2["lat"], t2["long"]))
+                                distances_from_sample_ride_vehicle.append(td_up_simpson) 
+                            if metric_used == "euclidean":
+                                td_up_euclidean = euclidean(t1["long"], t1["lat"], t2["long"], t2["lat"])
+                                distances_from_sample_ride_vehicle.append(td_up_euclidean) 
+                            trajs_from_sample_ride_vehicle.append((t1, t2))
+                            labels_from_sample_ride_vehicle.append((trajectory_monotonous[window_size][vehicle1][r1][x1], trajectory_monotonous[window_size][vehicle2][r2][x2]))
 
-plt.title("left down")
-plt.scatter(left_NF, down_NF, label = "NF")
-plt.scatter(left_NM, down_NM, label = "NM")
-plt.scatter(left_I, down_I, label = "I")
-plt.legend()
-plt.show()
+                            if distances_from_sample_ride_vehicle[-1] > max_distances_from_sample_ride_vehicle:
+                                index_max_distances_from_sample_ride_vehicle_1 = t1
+                                index_max_distances_from_sample_ride_vehicle_2 = t2
+                                max_distances_from_sample_ride_vehicle = distances_from_sample_ride_vehicle[-1]
+            
+                            if distances_from_sample_ride_vehicle[-1] < min_distances_from_sample_ride_vehicle:
+                                index_min_distances_from_sample_ride_vehicle_1 = t1
+                                index_min_distances_from_sample_ride_vehicle_2 = t2
+                                min_distances_from_sample_ride_vehicle = distances_from_sample_ride_vehicle[-1]
 
-plt.title("up right")
-plt.scatter(up_NF, right_NF, label = "NF")
-plt.scatter(up_NM, right_NM, label = "NM")
-plt.scatter(up_I, right_I, label = "I")
-plt.legend() 
-plt.show()
+    plt.subplot(1, 2, 1)
+    plt.title("Min " + metric_used)
+    plt.plot(index_min_distances_from_sample_ride_vehicle_1["long"], index_min_distances_from_sample_ride_vehicle_1["lat"])
+    plt.plot(index_min_distances_from_sample_ride_vehicle_2["long"], index_min_distances_from_sample_ride_vehicle_2["lat"]) 
+    plt.subplot(1, 2, 2)
+    plt.title("Max " + metric_used)
+    plt.plot(index_max_distances_from_sample_ride_vehicle_1["long"], index_max_distances_from_sample_ride_vehicle_1["lat"])
+    plt.plot(index_max_distances_from_sample_ride_vehicle_2["long"], index_max_distances_from_sample_ride_vehicle_2["lat"]) 
+    plt.savefig("Min Max " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
  
-plt.title("left circle down circle")
-plt.scatter(left_circle_NF, down_circle_NF, label = "NF")
-plt.scatter(left_circle_NM, down_circle_NM, label = "NM")
-plt.scatter(left_circle_I, down_circle_I, label = "I")
-plt.legend()
-plt.show()
+    only_NF = []
+    only_NM = []
+    only_I = [] 
+    NF_and_NM = []
+    NF_and_I = []
+    NM_and_I = [] 
+    for i in range(len(distances_from_sample_ride_vehicle)):
+        if labels_from_sample_ride_vehicle[i][0] == "NF" and labels_from_sample_ride_vehicle[i][1] == "NF":
+            only_NF.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "NM" and labels_from_sample_ride_vehicle[i][1] == "NM":
+            only_NM.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "I" and labels_from_sample_ride_vehicle[i][1] == "I":
+            only_I.append(distances_from_sample_ride_vehicle[i]) 
+        if labels_from_sample_ride_vehicle[i][0] == "NF" and labels_from_sample_ride_vehicle[i][1] == "NM":
+            NF_and_NM.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "NM" and labels_from_sample_ride_vehicle[i][1] == "NF":
+            NF_and_NM.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "NF" and labels_from_sample_ride_vehicle[i][1] == "I":
+            NF_and_I.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "I" and labels_from_sample_ride_vehicle[i][1] == "NF":
+            NF_and_I.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "NM" and labels_from_sample_ride_vehicle[i][1] == "I":
+            NM_and_I.append(distances_from_sample_ride_vehicle[i])
+        if labels_from_sample_ride_vehicle[i][0] == "I" and labels_from_sample_ride_vehicle[i][1] == "NM":
+            NM_and_I.append(distances_from_sample_ride_vehicle[i])
+    
+    plt.title("Dist " + metric_used)
+    plt.hist(distances_from_sample_ride_vehicle)
+    plt.hist(only_NF, label = "NF")
+    plt.hist(only_NM, label = "NM")
+    plt.hist(only_I, label = "I") 
+    plt.hist(NF_and_NM, label = "NF NM")
+    plt.hist(NF_and_I, label = "NF I")
+    plt.hist(NM_and_I, label = "NM I") 
+    plt.legend()
+    plt.savefig("Dist " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
 
-plt.title("up circle right circle")
-plt.scatter(up_circle_NF, right_circle_NF, label = "NF")
-plt.scatter(up_circle_NM, right_circle_NM, label = "NM")
-plt.scatter(up_circle_I, right_circle_I, label = "I")
-plt.legend() 
-plt.show()
+    return distances_from_sample_ride_vehicle, labels_from_sample_ride_vehicle, trajs_from_sample_ride_vehicle, only_NF, only_NM, only_I, NF_and_NM, NF_and_I, NM_and_I 
+
+#compare_all("custom")
+#compare_all("simpson")
+#compare_all("trapz")
+#compare_all("euclidean")
