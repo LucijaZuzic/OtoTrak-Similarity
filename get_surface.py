@@ -4,8 +4,104 @@ import pandas as pd
 import numpy as np 
 import pickle
 from scipy.integrate import simpson
+import scipy.fft
 from sklearn.metrics import auc
-      
+from datetime import datetime     
+
+def dtw(longitudes1, latitudes1, longitudes2, latitudes2): 
+    if len(longitudes1) == 0 and len(latitudes1) == 0 and len(longitudes2) == 0 and len(latitudes2) == 0:
+        return 0
+    if len(longitudes1) == 0 and len(latitudes1) == 0 and len(longitudes2) > 0 and len(latitudes2) > 0:
+        return 10000000
+    if len(longitudes1) > 0 and len(latitudes1) > 0 and len(longitudes2) == 0 and len(latitudes2) == 0:
+        return 10000000 
+    headlong1 = [longitudes1[0]]
+    restlong1 = []
+    headlong2 = [longitudes2[0]]
+    restlong2 = []
+    headlat1 = [latitudes1[0]]
+    restlat1 = []
+    headlat2 = [latitudes2[0]]
+    restlat2 = []
+    if len(longitudes1) > 1 and len(latitudes1) > 1:
+        restlong1 = longitudes1[1:]
+        restlat1 = latitudes1[1:]
+    if len(longitudes2) > 1 and len(latitudes2) > 1:
+        restlong2 = longitudes2[1:]
+        restlat2 = latitudes2[1:]
+    dtw1 = dtw(headlong1, headlat1, restlong2, restlat2) 
+    dtw2 = dtw(restlong1, restlat1, restlong2, restlat2)
+    dtw3 = dtw(restlong1, restlat1, headlong2, headlat2)
+    return euclidean(headlong1, headlat1, headlong2, headlat2) + min(min(dtw1, dtw2), dtw3)
+
+def decompose_fft(data: list, threshold: float = 0.0):
+    fft3 = np.fft.fft(data)
+    x = np.arange(0, 10, 10 / len(data))
+    freqs = np.fft.fftfreq(len(x), .01)
+    recomb = np.zeros((len(x),))
+    for i in range(len(fft3)):
+        if abs(fft3[i]) / len(x) > threshold:
+            sinewave = (
+                1 
+                / len(x) 
+                * (
+                    fft3[i].real 
+                    * np.cos(freqs[i] * 2 * np.pi * x) 
+                    - fft3[i].imag 
+                    * np.sin(freqs[i] * 2 * np.pi * x)))
+            recomb += sinewave
+            plt.plot(x, sinewave)
+    plt.title("Sinewave")
+    plt.show()
+
+    plt.plot(x, recomb, x, data)
+    plt.title("Recomb")
+    plt.show()
+ 
+def process_time(time_as_str):
+    time_as_str = time_as_str.split(".")[0]
+    return datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S')
+
+def poly_calc(coeffs, xs):
+    ys = []
+    for xval in xs:
+        yval = 0
+        for i in range(len(coeffs)):
+            yval += coeffs[i] * (xval ** (len(coeffs) - 1 - i))
+        ys.append(yval)
+    return ys
+
+def get_fft_xt_yt(longitudes, latitudes, times_ride): 
+    xt, yt = get_poly_xt_yt(longitudes, latitudes, times_ride)
+    xn = poly_calc(xt, range(len(longitudes)))
+    yn = poly_calc(yt, range(len(latitudes)))
+    fftx = scipy.fft.fft(xn)
+    ffty = scipy.fft.fft(yn)
+    return xt, yt, xn, yn, fftx, ffty
+
+def get_poly_xt_yt(longitudes, latitudes, times_ride):
+    xt = np.polyfit(times_ride, longitudes, len(longitudes))
+    yt = np.polyfit(times_ride, latitudes, len(latitudes)) 
+    return xt, yt
+
+def get_surf_xt_yt(longitudes, latitudes, times_ride, metric_used): 
+    if metric_used == "trapz":
+        return np.trapz(longitudes, times_ride), np.trapz(latitudes, times_ride) 
+    if metric_used == "simpson":
+        return simpson(longitudes, times_ride), simpson(latitudes, times_ride) 
+
+def transform_time(times_ride): 
+    times_ride = [process_time(time_as_str) for time_as_str in times_ride]
+    times_ride = [(time_one - times_ride[0]).total_seconds() for time_one in times_ride] 
+    return times_ride
+    
+def traj_len_offset(longitudes, latitudes):
+    sum_dist = 0
+    for i in range(len(longitudes) - 1):
+        sum_dist += np.sqrt((longitudes[i + 1] - longitudes[i]) ** 2 + (latitudes[i + 1] - latitudes[i]) ** 2)
+    offset_total = np.sqrt((longitudes[len(longitudes) - 1] - longitudes[0]) ** 2 + (latitudes[len(latitudes) - 1] - latitudes[0]) ** 2)
+    return sum_dist, offset_total
+
 def get_vector(x1, x2, y1, y2):
     if x1 == x2:
         return 0, -1, x1 
@@ -216,10 +312,12 @@ for subdir_name in all_subdirs:
         file_with_ride = pd.read_csv(subdir_name + "/cleaned_csv/" + some_file)
         longitudes = list(file_with_ride["fields_longitude"])
         latitudes = list(file_with_ride["fields_latitude"]) 
+        times = list(file_with_ride["time"]) 
   
         for x in range(0, len(longitudes) - window_size + 1, step_size):
             longitudes_tmp = longitudes[x:x + window_size]
             latitudes_tmp = latitudes[x:x + window_size]
+            times_tmp = times[x:x + window_size]
 
             set_longs = set()
             set_lats = set()
@@ -234,12 +332,14 @@ for subdir_name in all_subdirs:
             longitudes_tmp_transform, latitudes_tmp_transform = preprocess_long_lat(longitudes_tmp, latitudes_tmp)
             
             longitudes_tmp_transform, latitudes_tmp_transform = scale_long_lat(longitudes_tmp_transform, latitudes_tmp_transform)
-              
+
+            times_tmp_transform = transform_time(times_tmp)
+
             total_possible_trajs += 1
             trajs_in_ride += 1
             trajs_in_dir += 1 
 
-            all_possible_trajs[window_size][subdir_name][only_num_ride][x] = {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform}
+            all_possible_trajs[window_size][subdir_name][only_num_ride][x] = {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform, "time": times_tmp_transform}
 
             long_sgn = set()
             for long_ind in range(len(longitudes_tmp_transform) - 1):
@@ -292,6 +392,9 @@ def compare_all_with_sample(metric_used, sample_x, sample_y, title_sample):
                 if metric_used == "custom":
                     td_up = traj_dist(t1["long"], t1["lat"], sample_x, sample_y) 
                     distances_from_sample_ride_vehicle.append(td_up) 
+                if metric_used == "dtw":
+                    td_up_dtw = dtw(t1["long"], t1["lat"], sample_x, sample_y) 
+                    distances_from_sample_ride_vehicle.append(td_up_dtw) 
                 if metric_used == "trapz":
                     td_up_trapz = abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x))
                     distances_from_sample_ride_vehicle.append(td_up_trapz) 
@@ -449,6 +552,7 @@ def use_metric(metric_used):
     plt.close()
 
 #use_metric("custom")
+#use_metric("dtw")
 #use_metric("simpson")
 #use_metric("trapz")
 #use_metric("euclidean")
@@ -482,8 +586,11 @@ def compare_all(metric_used):
                             #td_up_auc = abs(auc(t1["long"], t1["lat"]) - auc(sample_x, sample_y)) - isti kao trapz, x mora biti rastući ili padajući
                             #print(td_up, td_up_trapz, td_up_simpson)#, td_up_auc)
                             if metric_used == "custom":
-                                td_up = traj_dist(t1["long"], t1["lat"], t2["long"], t2["lat"]) 
-                                distances_from_sample_ride_vehicle.append(td_up) 
+                                td_up = traj_dist(t1["long"], t1["lat"], t2["long"], t2["lat"])
+                                distances_from_sample_ride_vehicle.append(td_up)
+                            if metric_used == "dtw":
+                                td_up_dtw = dtw(t1["long"], t1["lat"], t2["long"], t2["lat"]) 
+                                distances_from_sample_ride_vehicle.append(td_up_dtw)   
                             if metric_used == "trapz":
                                 td_up_trapz = abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(t2["lat"], t2["long"]))
                                 distances_from_sample_ride_vehicle.append(td_up_trapz) 
@@ -558,6 +665,143 @@ def compare_all(metric_used):
     return distances_from_sample_ride_vehicle, labels_from_sample_ride_vehicle, trajs_from_sample_ride_vehicle, only_NF, only_NM, only_I, NF_and_NM, NF_and_I, NM_and_I 
 
 #compare_all("custom")
+#compare_all("dtw")
 #compare_all("simpson")
 #compare_all("trapz")
 #compare_all("euclidean")
+
+def get_all_surface(metric_used):
+ 
+    distances_x = [] 
+    distances_y = [] 
+    labels_from_sample_ride_vehicle = [] 
+    max_x = 0
+    index_max_x = 0 
+
+    min_x = 100000
+    index_min_x = 0 
+
+    max_y = 0
+    index_max_y = 0 
+
+    min_y = 100000
+    index_min_y = 0 
+
+    for vehicle1 in all_possible_trajs[window_size].keys():  
+        for r1 in all_possible_trajs[window_size][vehicle1]:  
+            for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
+                t1 = all_possible_trajs[window_size][vehicle1][r1][x1]   
+                #td_up_auc = abs(auc(t1["long"], t1["lat"]) - auc(sample_x, sample_y)) - isti kao trapz, x mora biti rastući ili padajući
+                #print(td_up, td_up_trapz, td_up_simpson)#, td_up_auc)
+                surface_x, surface_y = get_surf_xt_yt(t1["long"], t1["lat"], t1["time"], metric_used)
+                distances_x.append(surface_x)
+                distances_y.append(surface_y)
+                labels_from_sample_ride_vehicle.append(trajectory_monotonous[window_size][vehicle1][r1][x1])
+
+                if distances_x[-1] > max_x:
+                    index_max_x = t1
+                    max_x = distances_x[-1]
+  
+                if distances_x[-1] < min_x:
+                    index_min_x = t1
+                    min_x = distances_x[-1]
+
+                if distances_y[-1] > max_y:
+                    index_max_y = t1
+                    max_y = distances_y[-1]
+  
+                if distances_y[-1] < min_y:
+                    index_min_y = t1
+                    min_y = distances_y[-1]
+
+    plt.subplot(1, 2, 1)
+    plt.title("Min x " + metric_used)
+    plt.plot(index_min_x["long"], index_min_x["lat"])
+    plt.subplot(1, 2, 2)
+    plt.title("Max x " + metric_used)
+    plt.plot(index_max_x["long"], index_max_x["lat"])
+    plt.savefig("Min Max x " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+    plt.subplot(1, 2, 1)
+    plt.title("Min y " + metric_used)
+    plt.plot(index_min_y["long"], index_min_y["lat"])
+    plt.subplot(1, 2, 2)
+    plt.title("Max y " + metric_used)
+    plt.plot(index_max_y["long"], index_max_y["lat"])
+    plt.savefig("Min Max y " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+    only_NF = {"x": [], "y": []}
+    only_NM = {"x": [], "y": []}
+    only_I = {"x": [], "y": []} 
+    for i in range(len(distances_x)):
+        if labels_from_sample_ride_vehicle[i] == "NF":
+            only_NF["x"].append(distances_x[i])
+            only_NF["y"].append(distances_y[i])
+        if labels_from_sample_ride_vehicle[i] == "NM":
+            only_NM["x"].append(distances_x[i])
+            only_NM["y"].append(distances_y[i])
+        if labels_from_sample_ride_vehicle[i] == "I":
+            only_I["x"].append(distances_x[i])
+            only_I["y"].append(distances_y[i]) 
+    
+    plt.title("Surf x " + metric_used)
+    plt.hist(distances_x)
+    plt.hist(only_NF["x"], label = "NF")
+    plt.hist(only_NM["x"], label = "NM")
+    plt.hist(only_I["x"], label = "I") 
+    plt.legend()
+    plt.savefig("Surf x " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+    plt.title("Surf y " + metric_used)
+    plt.hist(distances_y)
+    plt.hist(only_NF["y"], label = "NF")
+    plt.hist(only_NM["y"], label = "NM")
+    plt.hist(only_I["y"], label = "I") 
+    plt.legend()
+    plt.savefig("Surf y " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+
+    plt.title("Scatter x  y " + metric_used)
+    #plt.scatter(distances_x, distances_y)
+    plt.scatter(only_NF["x"], only_NF["y"], label = "NF")
+    plt.scatter(only_NM["x"], only_NM["y"], label = "NM")
+    plt.scatter(only_I["x"], only_I["y"], label = "I") 
+    plt.legend()
+    plt.savefig("Scatter x y " + metric_used + ".png", bbox_inches = "tight")
+    plt.close()
+    
+    return distances_x, distances_y, labels_from_sample_ride_vehicle, only_NF, only_NM, only_I
+
+#get_all_surface("trapz")
+#get_all_surface("simpson")
+
+def get_all_fft():
+   
+    for vehicle1 in all_possible_trajs[window_size].keys():  
+        for r1 in all_possible_trajs[window_size][vehicle1]:  
+            for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
+                t1 = all_possible_trajs[window_size][vehicle1][r1][x1]   
+                xt, yt, xn, yn, fftx, ffty = get_fft_xt_yt(t1["long"], t1["lat"], t1["time"])
+            
+                plt.plot(t1["time"], t1["long"]) 
+                plt.plot(t1["time"], xn)
+                plt.plot(t1["time"], fftx)
+                plt.xlabel("seconds")
+                plt.ylabel("x")
+                plt.show()  
+
+                decompose_fft(xn)
+
+                plt.plot(t1["time"], t1["lat"]) 
+                plt.plot(t1["time"], yn)
+                plt.plot(t1["time"], ffty)
+                plt.xlabel("seconds")
+                plt.ylabel("y")
+                plt.show()  
+
+                decompose_fft(yn)
+                
+#get_all_fft()
