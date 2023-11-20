@@ -273,8 +273,13 @@ all_possible_trajs[window_size] = dict()
 trajectory_monotonous = dict()
 trajectory_monotonous[window_size] = dict()
 
-trajectory_speed_limit_active = dict()
-trajectory_speed_limit_active[window_size] = dict()
+flag_list = ["key", "flip", "zone", "engine", "in_zone", "ignition", "sleep_mode", "staff_mode", "buzzer_active", 
+             "in_primary_zone", "in_restricted_zone", "onboard_geofencing", "speed_limit_active"]
+
+trajectory_flags = dict()
+for flag in flag_list:
+    trajectory_flags[flag] = dict()
+    trajectory_flags[flag][window_size] = dict()
 
 label_NF = 0
 label_NM = 0
@@ -292,7 +297,8 @@ for subdir_name in all_subdirs:
      
     all_possible_trajs[window_size][subdir_name] = dict() 
     trajectory_monotonous[window_size][subdir_name] = dict() 
-    trajectory_speed_limit_active[window_size][subdir_name] = dict() 
+    for flag in flag_list:
+        trajectory_flags[flag][window_size][subdir_name] = dict() 
 
     all_rides_cleaned = os.listdir(subdir_name + "/cleaned_csv/")
     
@@ -312,29 +318,33 @@ for subdir_name in all_subdirs:
         trajs_in_ride = 0
 
         all_possible_trajs[window_size][subdir_name][only_num_ride] = dict()
-        trajectory_monotonous[window_size][subdir_name][only_num_ride] = dict()
-        trajectory_speed_limit_active[window_size][subdir_name][only_num_ride] = dict()
+        trajectory_monotonous[window_size][subdir_name][only_num_ride] = dict() 
+        for flag in flag_list:
+            trajectory_flags[flag][window_size][subdir_name][only_num_ride] = dict() 
     
         file_with_ride = pd.read_csv(subdir_name + "/cleaned_csv/" + some_file)
         longitudes = list(file_with_ride["fields_longitude"])
         latitudes = list(file_with_ride["fields_latitude"]) 
-        times = list(file_with_ride["time"]) 
-        speed_limit_active = list(file_with_ride["fields_speed_limit_active"]) 
+        times = list(file_with_ride["time"])  
+        flags_dict = dict()
+        for flag in flag_list:
+            flags_dict[flag] = list(file_with_ride["fields_" + flag])
   
         for x in range(0, len(longitudes) - window_size + 1, step_size):
             longitudes_tmp = longitudes[x:x + window_size]
             latitudes_tmp = latitudes[x:x + window_size]
-            times_tmp = times[x:x + window_size]
-            speed_limit_active_tmp = speed_limit_active[x:x + window_size]
-            
-            count_limit = 0
-            all_limit = 0
-            for sl in speed_limit_active_tmp: 
-                all_limit += 1
-                if sl:
-                    count_limit += 1
-                    
-            trajectory_speed_limit_active[window_size][subdir_name][only_num_ride][x] = count_limit / all_limit
+            times_tmp = times[x:x + window_size] 
+            for flag in flag_list:
+                trajectory_flags_tmp = flags_dict[flag][x:x + window_size] 
+ 
+                count_limit = 0
+                all_limit = 0
+                for val_flag in trajectory_flags_tmp: 
+                    all_limit += 1
+                    if val_flag:
+                        count_limit += 1
+                        
+                trajectory_flags[flag][window_size][subdir_name][only_num_ride][x] = count_limit / all_limit
 
             set_longs = set()
             set_lats = set()
@@ -387,22 +397,23 @@ for subdir_name in all_subdirs:
         #print(only_num_ride, trajs_in_ride)
     print(subdir_name, trajs_in_dir)
 print(total_possible_trajs)
-print(label_NF, label_NM, label_D, label_I) 
+print("NF", label_NF, "NM", label_NM, "D", label_D, "I", label_I) 
  
-def get_all_sl():
+def get_all_sl(flag_name):
     sl_array = {"NF": [], "NM": [], "I": []}  
    
     for vehicle1 in all_possible_trajs[window_size].keys():  
         for r1 in all_possible_trajs[window_size][vehicle1]:  
             for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
-                sl_array[trajectory_monotonous[window_size][vehicle1][r1][x1]].append(trajectory_speed_limit_active[window_size][vehicle1][r1][x1])
+                sl_array[trajectory_monotonous[window_size][vehicle1][r1][x1]].append(trajectory_flags[flag_name][window_size][vehicle1][r1][x1])
                  
     for sl_type in sl_array: 
-        plt.title("Speed limit percentage distribution " + sl_type)
+        plt.title(flag_name.replace("_", " ").capitalize() + " " + sl_type)
         plt.hist(sl_array[sl_type], label = sl_type) 
         plt.legend()
-        plt.savefig("Speed limit percentage distribution " + sl_type + ".png", bbox_inches = "tight")
+        plt.savefig(flag_name.replace("_", " ").capitalize() + " " + sl_type + ".png", bbox_inches = "tight")
         plt.close()
-        print(sl_type, np.average(sl_array[sl_type]))
+        print(flag_name, sl_type, np.average(sl_array[sl_type]))
 
-get_all_sl()
+for flag_name in flag_list:
+    get_all_sl(flag_name) 
