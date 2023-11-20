@@ -249,8 +249,8 @@ def scale_long_lat_min_max(long_list, lat_list, minx, miny, maxx, maxy):
     y_diff = maxy - miny 
     if y_diff == 0:
         y_diff = 1
-    long_list2 = [(x - min(long_list)) / x_diff for x in long_list]
-    lat_list2 = [(y - min(lat_list)) / y_diff for y in lat_list]
+    long_list2 = [(x - min(long_list)) / max(x_diff, y_diff) for x in long_list]
+    lat_list2 = [(y - min(lat_list)) / max(x_diff, y_diff) for y in lat_list]
     return long_list2, lat_list2 
     
 def scale_long_lat(long_list, lat_list):
@@ -331,6 +331,9 @@ all_possible_trajs[window_size] = dict()
 all_feats_trajs = dict()   
 all_feats_trajs[window_size] = dict()
 
+all_feats_scaled_trajs = dict()   
+all_feats_scaled_trajs[window_size] = dict()
+
 trajectory_monotonous = dict()
 trajectory_monotonous[window_size] = dict()
 
@@ -358,6 +361,7 @@ for subdir_name in all_subdirs:
      
     all_possible_trajs[window_size][subdir_name] = dict() 
     all_feats_trajs[window_size][subdir_name] = dict() 
+    all_feats_scaled_trajs[window_size][subdir_name] = dict() 
     trajectory_monotonous[window_size][subdir_name] = dict() 
     for flag in flag_list:
         trajectory_flags[flag][window_size][subdir_name] = dict() 
@@ -381,6 +385,7 @@ for subdir_name in all_subdirs:
 
         all_possible_trajs[window_size][subdir_name][only_num_ride] = dict()
         all_feats_trajs[window_size][subdir_name][only_num_ride] = dict()
+        all_feats_scaled_trajs[window_size][subdir_name][only_num_ride] = dict()
         trajectory_monotonous[window_size][subdir_name][only_num_ride] = dict() 
         for flag in flag_list:
             trajectory_flags[flag][window_size][subdir_name][only_num_ride] = dict() 
@@ -425,7 +430,7 @@ for subdir_name in all_subdirs:
             
             longitudes_tmp_transform, latitudes_tmp_transform = preprocess_long_lat(longitudes_tmp, latitudes_tmp)
             
-            #longitudes_tmp_transform, latitudes_tmp_transform = scale_long_lat(longitudes_tmp_transform, latitudes_tmp_transform)
+            longitudes_scaled, latitudes_scaled = scale_long_lat(longitudes_tmp_transform, latitudes_tmp_transform)
 
             times_tmp_transform = transform_time(times_tmp)
 
@@ -438,7 +443,12 @@ for subdir_name in all_subdirs:
             turn_angles = mean_vect_turning_angles(longitudes_tmp_transform, latitudes_tmp_transform)  
             sp_len = mean_speed_len(longitudes_tmp_transform, latitudes_tmp_transform, times_tmp_transform)  
             sp_offset = mean_speed_offset(longitudes_tmp_transform, latitudes_tmp_transform, times_tmp_transform)   
-            surfarea = total_surf(longitudes_tmp_transform, latitudes_tmp_transform)   
+            surfarea = total_surf(longitudes_tmp_transform, latitudes_tmp_transform) 
+              
+            turn_angles_scaled = mean_vect_turning_angles(longitudes_scaled, latitudes_scaled)  
+            sp_len_scaled = mean_speed_len(longitudes_scaled, latitudes_scaled, times_tmp_transform)  
+            sp_offset_scaled = mean_speed_offset(longitudes_scaled, latitudes_scaled, times_tmp_transform)   
+            surfarea_scaled = total_surf(longitudes_scaled, latitudes_scaled)   
 
             long_sgn = set()
             for long_ind in range(len(longitudes_tmp_transform) - 1):
@@ -456,16 +466,35 @@ for subdir_name in all_subdirs:
             xy_poly = []
             if len(lat_sgn) == 1 and len(long_sgn) == 1:
                 xy_poly = np.polyfit(longitudes_tmp_transform, latitudes_tmp_transform, deg)
+                
+            x_poly_scaled, y_poly_scaled = get_poly_xt_yt(longitudes_scaled, latitudes_scaled, times_tmp_transform, deg)
+            xy_poly_scaled = []
+            if len(lat_sgn) == 1 and len(long_sgn) == 1:
+                xy_poly_scaled = np.polyfit(longitudes_scaled, latitudes_scaled, deg)
 
             all_feats_trajs[window_size][subdir_name][only_num_ride][x] = {"mean_vect_turning_angles": turn_angles / np.pi * 180, 
                                                                            "x_poly": x_poly, 
                                                                            "y_poly": y_poly, 
                                                                            "xy_poly": xy_poly, 
                                                                            "duration": times_tmp_transform[-1],
+                                                                           "len": sp_len * times_tmp_transform[-1], 
+                                                                           "offset": sp_offset * times_tmp_transform[-1],
                                                                            "mean_speed_len": sp_len, 
                                                                            "mean_speed_offset": sp_offset,
                                                                            "len_vs_offset": sp_len / sp_offset,
                                                                            "total_surf": surfarea}
+
+            all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x] = {"mean_vect_turning_angles": turn_angles_scaled / np.pi * 180, 
+                                                                           "x_poly": x_poly_scaled, 
+                                                                           "y_poly": y_poly_scaled, 
+                                                                           "xy_poly": xy_poly_scaled, 
+                                                                           "duration": times_tmp_transform[-1],
+                                                                           "len": sp_len_scaled * times_tmp_transform[-1], 
+                                                                           "offset": sp_offset_scaled * times_tmp_transform[-1],
+                                                                           "mean_speed_len": sp_len_scaled, 
+                                                                           "mean_speed_offset": sp_offset_scaled,
+                                                                           "len_vs_offset": sp_len_scaled / sp_offset_scaled,
+                                                                           "total_surf": surfarea_scaled}
             
             if len(lat_sgn) > 1 and len(long_sgn) > 1:
                 trajectory_monotonous[window_size][subdir_name][only_num_ride][x] = "NF"
@@ -493,7 +522,7 @@ for d in range(deg + 1):
     new_csv_content += "y_poly_" + str(d + 1) + ","
 for d in range(deg + 1):
     new_csv_content += "xy_poly_" + str(d + 1) + "," 
-new_csv_content += "duration,mean_speed_len,mean_speed_offset,len_vs_offset,total_surf,monotonous,"
+new_csv_content += "duration,len,offset,mean_speed_len,mean_speed_offset,len_vs_offset,total_surf,monotonous,"
 for flag in flag_list:
     new_csv_content += flag + ","
 new_csv_content += "\n"
@@ -518,5 +547,40 @@ for vehicle1 in all_possible_trajs[window_size].keys():
                 new_csv_content += str(trajectory_flags[flag][window_size][vehicle1][r1][x1]) + ","  
             new_csv_content += "\n"    
 csv_file = open("all_feats.csv", "w")
+csv_file.write(new_csv_content)
+csv_file.close()
+ 
+new_csv_content = "window_size,vehicle,ride,start,mean_vect_turning_angles,"
+for d in range(deg + 1):
+    new_csv_content += "x_poly_" + str(d + 1) + ","
+for d in range(deg + 1):
+    new_csv_content += "y_poly_" + str(d + 1) + ","
+for d in range(deg + 1):
+    new_csv_content += "xy_poly_" + str(d + 1) + "," 
+new_csv_content += "duration,len,offset,mean_speed_len,mean_speed_offset,len_vs_offset,total_surf,monotonous,"
+for flag in flag_list:
+    new_csv_content += flag + ","
+new_csv_content += "\n"
+for vehicle1 in all_possible_trajs[window_size].keys():  
+    for r1 in all_possible_trajs[window_size][vehicle1]:
+        for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
+            new_csv_content += str(window_size) + "," + str(vehicle1) + "," + str(r1) + "," + str(x) + ","  
+            #print(all_feats_scaled_trajs[window_size][vehicle1][r1][x1])
+            for feat_name in all_feats_scaled_trajs[window_size][vehicle1][r1][x1]: 
+                if "poly" in feat_name: 
+                    for val in list(all_feats_scaled_trajs[window_size][vehicle1][r1][x1][feat_name]): 
+                        new_csv_content += str(val) + ","
+                    if len(list(all_feats_scaled_trajs[window_size][vehicle1][r1][x1][feat_name])) == 0:
+                        for d in range(deg + 1): 
+                            new_csv_content += ","
+                else:
+                    new_csv_content += str(all_feats_scaled_trajs[window_size][vehicle1][r1][x1][feat_name]) + ","
+            #print(trajectory_monotonous[window_size][vehicle1][r1][x1])
+            new_csv_content += trajectory_monotonous[window_size][vehicle1][r1][x1] + ","  
+            for flag in flag_list:
+                #print(trajectory_flags[flag][window_size][vehicle1][r1][x1])
+                new_csv_content += str(trajectory_flags[flag][window_size][vehicle1][r1][x1]) + ","  
+            new_csv_content += "\n"    
+csv_file = open("all_feats_scaled.csv", "w")
 csv_file.write(new_csv_content)
 csv_file.close()
