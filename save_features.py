@@ -368,8 +368,8 @@ label_I = 0
 label_D = 0
  
 total_possible_trajs = 0
-
-def compare_traj_and_sample(sample_x, sample_y, t1, metric_used): 
+ 
+def compare_traj_and_sample(sample_x, sample_y, sample_time, t1, metric_used): 
     if metric_used == "custom":
         return traj_dist(t1["long"], t1["lat"], sample_x, sample_y)  
     if metric_used == "dtw":
@@ -378,10 +378,18 @@ def compare_traj_and_sample(sample_x, sample_y, t1, metric_used):
         return abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x)) 
     if metric_used == "simpson":
         return abs(simpson(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x))  
+    if metric_used == "trapz x":
+        return abs(np.trapz(t1["long"], t1["time"]) - np.trapz(sample_x, sample_time))
+    if metric_used == "simpson x":
+        return abs(simpson(t1["long"], t1["time"]) - np.trapz(sample_x, sample_time)) 
+    if metric_used == "trapz y":
+        return abs(np.trapz(t1["lat"], t1["time"]) - np.trapz(sample_y, sample_time))
+    if metric_used == "simpson y":
+        return abs(simpson(t1["lat"], t1["time"]) - np.trapz(sample_y, sample_time))  
     if metric_used == "euclidean":
         return euclidean(t1["long"], t1["lat"], sample_x, sample_y)
 
-metric_names = ["euclidean", "dtw", "simpson", "trapz", "custom"]
+metric_names = ["euclidean", "dtw", "simpson", "trapz", "custom", "simpson x", "trapz x", "simpson y", "trapz y"]
 sample_names = dict()
 
 left_edge_x = [0 for i in range(window_size)]
@@ -616,8 +624,8 @@ for subdir_name in all_subdirs:
                     oldy = [valy for valy in sample_names[sample_name]["lat"]]
                     newx = [valx * max(max(longitudes_tmp_transform), max(latitudes_tmp_transform)) for valx in sample_names[sample_name]["long"]]
                     newy = [valy * max(max(longitudes_tmp_transform), max(latitudes_tmp_transform)) for valy in sample_names[sample_name]["lat"]]
-                    all_feats_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform}, metric_name)
-                    all_feats_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform}, metric_name)
+                    all_feats_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, range(len(newx)), {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform, "time": times_tmp_transform}, metric_name)
+                    all_feats_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, range(len(oldx)), {"long": longitudes_tmp_transform, "lat": latitudes_tmp_transform, "time": times_tmp_transform}, metric_name)
 
             all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x] = {"mean_vect_turning_angles": turn_angles_scaled / np.pi * 180, 
                                                                            "max_x": max(longitudes_scaled),
@@ -643,8 +651,8 @@ for subdir_name in all_subdirs:
                     oldy = [valy for valy in sample_names[sample_name]["lat"]]
                     newx = [valx * max(max(longitudes_scaled), max(latitudes_scaled)) for valx in sample_names[sample_name]["long"]]
                     newy = [valy * max(max(longitudes_scaled), max(latitudes_scaled)) for valy in sample_names[sample_name]["lat"]]
-                    all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, {"long": longitudes_scaled, "lat": latitudes_scaled}, metric_name)
-                    all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, {"long": longitudes_scaled, "lat": latitudes_scaled}, metric_name)
+                    all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, range(len(newx)), {"long": longitudes_scaled, "lat": latitudes_scaled, "time": times_tmp_transform}, metric_name)
+                    all_feats_scaled_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, range(len(oldx)), {"long": longitudes_scaled, "lat": latitudes_scaled, "time": times_tmp_transform}, metric_name)
 
             all_feats_scaled_to_max_trajs[window_size][subdir_name][only_num_ride][x] = {"mean_vect_turning_angles": turn_angles_scaled_to_max / np.pi * 180, 
                                                                            "max_x": max(longitudes_scaled_to_max),
@@ -670,8 +678,8 @@ for subdir_name in all_subdirs:
                     oldy = [valy for valy in sample_names[sample_name]["lat"]]
                     newx = [valx * max(max(longitudes_scaled_to_max), max(latitudes_scaled_to_max)) for valx in sample_names[sample_name]["long"]]
                     newy = [valy * max(max(longitudes_scaled_to_max), max(latitudes_scaled_to_max)) for valy in sample_names[sample_name]["lat"]]
-                    all_feats_scaled_to_max_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, {"long": longitudes_scaled_to_max, "lat": latitudes_scaled_to_max}, metric_name)
-                    all_feats_scaled_to_max_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, {"long": longitudes_scaled_to_max, "lat": latitudes_scaled_to_max}, metric_name)
+                    all_feats_scaled_to_max_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_same_" + metric_name] = compare_traj_and_sample(newx, newy, range(len(newx)), {"long": longitudes_scaled_to_max, "lat": latitudes_scaled_to_max, "time": times_tmp_transform}, metric_name)
+                    all_feats_scaled_to_max_trajs[window_size][subdir_name][only_num_ride][x][sample_name + "_diff_" + metric_name] = compare_traj_and_sample(oldx, oldy, range(len(oldx)), {"long": longitudes_scaled_to_max, "lat": latitudes_scaled_to_max, "time": times_tmp_transform}, metric_name)
             
             if len(lat_sgn) > 1 and len(long_sgn) > 1:
                 trajectory_monotonous[window_size][subdir_name][only_num_ride][x] = "NF"
