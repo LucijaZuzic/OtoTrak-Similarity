@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+all_feats_scaled_to_max.csv filter=lfs diff=lfs merge=lfs -text
+all_feats.csv filter=lfs diff=lfs merge=lfs -text
+all_feats_scaled.csv filter=lfs diff=lfs merge=lfs -text
