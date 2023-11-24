@@ -60,7 +60,7 @@ def decompose_fft(data: list, threshold: float = 0.0):
  
 def process_time(time_as_str):
     time_as_str = time_as_str.split(".")[0]
-    return datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S')
+    return (datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S') - datetime(1970, 1, 1)).total_seconds() + milisecond / 1000
 
 def poly_calc(coeffs, xs):
     ys = []
@@ -92,7 +92,7 @@ def get_surf_xt_yt(longitudes, latitudes, times_ride, metric_used):
 
 def transform_time(times_ride): 
     times_ride = [process_time(time_as_str) for time_as_str in times_ride]
-    times_ride = [(time_one - times_ride[0]).total_seconds() for time_one in times_ride] 
+    times_ride = [time_one - times_ride[0] for time_one in times_ride] 
     return times_ride
     
 def traj_len_offset(longitudes, latitudes):

@@ -6,7 +6,7 @@ import pickle
     
 def process_time(time_as_str):
     time_as_str = time_as_str.split(".")[0]
-    return datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S')
+    return (datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S') - datetime(1970, 1, 1)).total_seconds() + milisecond / 1000
 
 def save_object(file_name, std1):       
     with open(file_name, 'wb') as file_object:

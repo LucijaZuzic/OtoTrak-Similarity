@@ -60,8 +60,10 @@ def decompose_fft(data: list, threshold: float = 0.0):
     plt.show()
  
 def process_time(time_as_str):
+    milisecond = int(time_as_str.split(".")[1])
     time_as_str = time_as_str.split(".")[0]
-    return datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S')
+    epoch = datetime(1970, 1, 1)
+    return (datetime.strptime(time_as_str, '%Y-%m-%d %H:%M:%S') - epoch).total_seconds() + milisecond / 1000
 
 def poly_calc(coeffs, xs):
     ys = []
@@ -93,7 +95,7 @@ def get_surf_xt_yt(longitudes, latitudes, times_ride, metric_used):
 
 def transform_time(times_ride): 
     times_ride = [process_time(time_as_str) for time_as_str in times_ride]
-    times_ride = [(time_one - times_ride[0]).total_seconds() for time_one in times_ride] 
+    times_ride = [time_one - times_ride[0] for time_one in times_ride] 
     return times_ride
     
 def traj_len_offset(longitudes, latitudes):
@@ -377,15 +379,16 @@ def compare_traj_and_sample(sample_x, sample_y, sample_time, t1, metric_used):
     if metric_used == "trapz":
         return abs(np.trapz(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x)) 
     if metric_used == "simpson":
-        return abs(simpson(t1["lat"], t1["long"]) - np.trapz(sample_y, sample_x))  
+        return abs(simpson(t1["lat"], t1["long"]) - simpson(sample_y, sample_x))  
     if metric_used == "trapz x":
         return abs(np.trapz(t1["long"], t1["time"]) - np.trapz(sample_x, sample_time))
     if metric_used == "simpson x":
-        return abs(simpson(t1["long"], t1["time"]) - np.trapz(sample_x, sample_time)) 
+        print(t1["time"])
+        return abs(simpson(t1["long"], t1["time"]) - simpson(sample_x, sample_time)) 
     if metric_used == "trapz y":
         return abs(np.trapz(t1["lat"], t1["time"]) - np.trapz(sample_y, sample_time))
-    if metric_used == "simpson y":
-        return abs(simpson(t1["lat"], t1["time"]) - np.trapz(sample_y, sample_time))  
+    if metric_used == "simpson y": 
+        return abs(simpson(t1["lat"], t1["time"]) - simpson(sample_y, sample_time))  
     if metric_used == "euclidean":
         return euclidean(t1["long"], t1["lat"], sample_x, sample_y)
 
@@ -720,7 +723,7 @@ def process_csv(some_dict, save_name):
     for vehicle1 in all_possible_trajs[window_size].keys():  
         for r1 in all_possible_trajs[window_size][vehicle1]:
             for x1 in all_possible_trajs[window_size][vehicle1][r1]: 
-                new_csv_content += str(window_size) + "," + str(vehicle1) + "," + str(r1) + "," + str(x) + ","  
+                new_csv_content += str(window_size) + "," + str(vehicle1) + "," + str(r1) + "," + str(x1) + ","  
                 for feat_name in some_dict[window_size][vehicle1][r1][x1]: 
                     if "poly" in feat_name: 
                         for val in list(some_dict[window_size][vehicle1][r1][x1][feat_name]): 
