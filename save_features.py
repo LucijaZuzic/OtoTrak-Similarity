@@ -372,6 +372,14 @@ label_D = 0
 total_possible_trajs = 0
  
 def compare_traj_and_sample(sample_x, sample_y, sample_time, t1, metric_used): 
+    sample_time_new = [x for x in sample_time]
+    for x in range(1, len(sample_time_new)):
+        if sample_time_new[x] == sample_time_new[x - 1]:
+            sample_time_new[x] = sample_time_new[x - 1] + 10 ** -4
+    t1_new = [x for x in t1["time"]]
+    for x in range(1, len(t1_new)):
+        if t1_new[x] == t1_new[x - 1]:
+            t1_new[x] = t1_new[x - 1] + 10 ** -4 
     if metric_used == "custom":
         return traj_dist(t1["long"], t1["lat"], sample_x, sample_y)  
     if metric_used == "dtw":
@@ -381,14 +389,13 @@ def compare_traj_and_sample(sample_x, sample_y, sample_time, t1, metric_used):
     if metric_used == "simpson":
         return abs(simpson(t1["lat"], t1["long"]) - simpson(sample_y, sample_x))  
     if metric_used == "trapz x":
-        return abs(np.trapz(t1["long"], t1["time"]) - np.trapz(sample_x, sample_time))
-    if metric_used == "simpson x":
-        print(t1["time"])
-        return abs(simpson(t1["long"], t1["time"]) - simpson(sample_x, sample_time)) 
+        return abs(np.trapz(t1["long"], t1_new) - np.trapz(sample_x, sample_time_new))
+    if metric_used == "simpson x": 
+        return abs(simpson(t1["long"], t1_new) - simpson(sample_x, sample_time_new)) 
     if metric_used == "trapz y":
-        return abs(np.trapz(t1["lat"], t1["time"]) - np.trapz(sample_y, sample_time))
+        return abs(np.trapz(t1["lat"], t1_new) - np.trapz(sample_y, sample_time_new))
     if metric_used == "simpson y": 
-        return abs(simpson(t1["lat"], t1["time"]) - simpson(sample_y, sample_time))  
+        return abs(simpson(t1["lat"], t1_new) - simpson(sample_y, sample_time_new))  
     if metric_used == "euclidean":
         return euclidean(t1["long"], t1["lat"], sample_x, sample_y)
 
